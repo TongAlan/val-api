@@ -1,1 +1,4 @@
-vlrenv/
+vlrvenv/
+__pycache__/
+*.pyc
+.env
