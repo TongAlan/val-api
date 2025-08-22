@@ -1,4 +1,5 @@
 import sys
+import re
 import requests
 from bs4 import BeautifulSoup
 import time
@@ -178,6 +179,7 @@ class VLRScraper:
         
         return match_details
     
+    
     def get_players(self, region):
         """Scrape players from VLR event stats page"""
         match region.lower():
@@ -242,13 +244,6 @@ class VLRScraper:
                 full_players_list.extend(player_details)
         return full_players_list
     
-        # player_cell = soup.find('td', class_='mod-player mod-a')
-        # player_link = player_cell.find('a', href=True)
-        # player_url = player_link['href']  # "/player/36245/n4rrate"
-        # player_id = player_url.split('/')[2]  # "36245"
-        # print(player_cell)
-        
-
     
     def get_player(self, vlr_id):
         """Get detailed information about a specific player"""
@@ -259,7 +254,6 @@ class VLRScraper:
             return None 
         url = f"{self.base_url}/player/{vlr_id}/{player_ign}"
         soup = self.get_page(url)
-        player_details = []
 
         if not soup: 
             return None
@@ -324,7 +318,7 @@ class VLRScraper:
         else:
             country = "Unknown"
 
-        player_details.append({
+        player_details = {
             'vlr_id': vlr_id,
             'ign': player_ign,
             'url': url,
@@ -333,54 +327,80 @@ class VLRScraper:
             'current_team': team_name,
             'winnings': winnings,
             'main_agents_last_60_days': main_agents
-        })
+        }
 
         return player_details
 
-
     
-    def get_teams(self):
-        """Scrape teams from VLR rankings page"""
-        url = f"{self.base_url}/rankings"
-        soup = self.get_page(url)
+    def get_teams(self, region):
+        """Scrape teams based on region"""
+
+        url_list = ["https://www.vlr.gg/event/2501/vct-2025-americas-stage-2/group-stage", 
+                    "https://www.vlr.gg/event/2498/vct-2025-emea-stage-2/group-stage",
+                    "https://www.vlr.gg/event/2500/vct-2025-pacific-stage-2/group-stage",
+                    "https://www.vlr.gg/event/2499/vct-2025-china-stage-2/group-stage"]
+
+        match region.lower():
+            case 'americas':
+                url = url_list[0]
+            case 'emea':
+                url = url_list[1]
+            case 'apac':
+                url = url_list[2]   
+            case 'china':
+                url = url_list[3]
+            case 'global':
+                url = url_list
+
+            case _:
+                return None
         
+        soup = self.get_page(url)
         if not soup:
-            return []
+            return None
         
         teams = []
         
-        # Look for team rankings
-        team_rows = soup.find_all('tr')
         
-        for row in team_rows:
-            try:
-                team_data = {}
-                
-                # Team name and link
-                team_link = row.find('a', href=lambda x: x and '/team/' in x)
-                if team_link:
-                    team_data['name'] = team_link.get_text(strip=True)
-                    team_data['url'] = self.base_url + team_link['href']
-                    team_data['team_id'] = team_link['href'].split('/')[-2]  # Extract team ID
-                
-                # Team country
-                flag = row.find('img', class_='flag')
-                if flag:
-                    team_data['country'] = flag.get('alt', 'Unknown')
-                
-                # Ranking
-                rank_elem = row.find('td', class_='rank-item-rank-num')
-                if rank_elem:
-                    team_data['rank'] = rank_elem.get_text(strip=True)
-                
-                if team_data:
-                    teams.append(team_data)
+        team_table = soup.find('div', class_="event-teams-container")
+        if not team_table:
+            return None
+        
+        try:
+            team_rows = team_table.find_all('div', class_='event-team')
+            for row in team_rows:
+                try:
                     
-            except Exception as e:
-                print(f"Error parsing team: {e}")
-                continue
+
+                    team_name_div = row.find('a', class_='event-team-name')
+                    team_link_relative = team_name_div.get('href') if team_name_div else None
+                    team_link_absolute = self.base_url + team_link_relative if team_link_relative else None
+                    team_details = self.get_team_details(team_link_absolute) if team_link_absolute else None
+                    team_details['region'] = region.lower()
+                    team_details['url'] = team_link_absolute
+
+                    teams.append(team_details)
+                
+                    
+                    
+                    # team_details = self.get_team_details(self.base_url + team_link['href'])
+                    
+                    
+                    
+                        
+        
+                except Exception as e:
+                    print(f"Error parsing team row: {e}")
+                    continue
+            
+
+        except Exception as e:
+            print(f"Error finding team rows: {e}")
+            return None 
+        
         
         return teams
+
     
     def get_team_details(self, team_url):
         """Get detailed information about a specific team"""
@@ -400,8 +420,109 @@ class VLRScraper:
             if team_tag:
                 team_details['tag'] = team_tag.get_text(strip=True)
             
-        
+            # Extract total winnings
+            money_elements = soup.find_all(string=lambda text: text and "$" in text and text.strip().startswith("$"))
+            if money_elements:
+                # Look for the largest dollar amount which is typically total winnings
+                potential_winnings = []
+                for elem in money_elements:
+                    elem_text = elem.strip()
+                    if elem_text.startswith("$") and "," in elem_text:
+                        potential_winnings.append(elem_text)
                 
+                if potential_winnings:
+                    # Take the first one, which is usually the total
+                    team_details['total_winnings'] = potential_winnings[0]
+                else:
+                    # Fallback to the first dollar amount
+                    team_details['total_winnings'] = money_elements[0].strip()
+            else:
+                team_details['total_winnings'] = "Unknown"
+            
+            # Extract roster (players and staff)
+            roster_card = soup.find('div', class_='wf-card', style=lambda x: x and 'overflow: hidden' in x and 'padding: 18px 20px' in x)
+            if roster_card:
+                roster_data = {'players': [], 'staff': []}
+                
+                # Find all sections (players and staff)
+                sections = roster_card.find_all('div', class_='wf-module-label')
+                
+                for section in sections:
+                    section_type = section.get_text(strip=True).lower()
+                    
+                    # Find the roster items container that follows this label
+                    roster_container = section.find_next_sibling('div')
+                    if not roster_container:
+                        continue
+                        
+                    roster_items = roster_container.find_all('div', class_='team-roster-item')
+                    
+                    for item in roster_items:
+                        try:
+                            link = item.find('a', href=True)
+                            if not link:
+                                continue
+                                
+                            href = link['href']
+                            if '/player/' not in href:
+                                continue
+                                
+                            # Extract player ID from URL
+                            parts = href.split('/player/')[1].split('/')
+                            if len(parts) < 2:
+                                continue
+                                
+                            player_id = int(parts[0])
+                            
+                            # Check if captain and active status
+                            alias_div = item.find('div', class_='team-roster-item-name-alias')
+                            is_captain = False
+                            is_active = True  # Default to active
+                            
+                            if alias_div:
+                                captain_icon = alias_div.find('i', class_='fa-star')
+                                is_captain = captain_icon is not None
+                            
+                            # Check for inactive tag
+                            role_tags = item.find_all('div', class_='wf-tag')
+                            for tag in role_tags:
+                                if tag.get_text(strip=True).lower() == 'inactive':
+                                    is_active = False
+                                    break
+                            
+                            # Get detailed player info
+                            if section_type == 'players':
+                                player_info = self.get_player(player_id)
+                                if player_info:
+                                    player_info['is_captain'] = is_captain
+                                    player_info['is_active'] = is_active
+                                    roster_data['players'].append(player_info)
+                            elif section_type == 'staff':
+                                # For staff, create basic info since get_player might not work
+                                person_data = {
+                                    'id': parts[0],
+                                    'ign': parts[1] if len(parts) > 1 else 'Unknown',
+                                    'url': href
+                                }
+                                
+                                # Get real name
+                                real_name_div = item.find('div', class_='team-roster-item-name-real')
+                                if real_name_div:
+                                    person_data['real_name'] = real_name_div.get_text(strip=True)
+                                
+                                # Get role (staff typically has one role)
+                                role_tag = item.find('div', class_='wf-tag')
+                                if role_tag:
+                                    person_data['role'] = role_tag.get_text(strip=True)
+                                
+                                roster_data['staff'].append(person_data)
+                                
+                        except Exception as e:
+                            print(f"Error parsing roster item: {e}")
+                            continue
+                
+                team_details['roster'] = roster_data
+            
             
             # Recent matches
             recent_matches = soup.find('div', class_='wf-card')
@@ -463,14 +584,14 @@ def main():
                 print(f"  {key}: {value}")
 
 if __name__ == "__main__":
-    # main()
-    scraper = VLRScraper()
-    # arg1 = int(sys.argv[1])  # Convert to integer
-    # player = scraper.get_player(arg1)
-    # print(json.dumps(player, indent=2))
-    # regions: americas, emea, apac, china
-    players = scraper.get_players('emea')
-    print(json.dumps(players, indent=2))
+    main()
+    # scraper = VLRScraper()
+    # teams = scraper.get_teams('apac')
+
+    # print(json.dumps(teams, indent=2))
+    # print(len(teams))
+    # # players = scraper.get_players('emea')
+    # # print(json.dumps(players, indent=2))
     
 
 
