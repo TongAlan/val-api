@@ -371,7 +371,6 @@ class VLRScraper:
             for row in team_rows:
                 try:
                     
-
                     team_name_div = row.find('a', class_='event-team-name')
                     team_link_relative = team_name_div.get('href') if team_name_div else None
                     team_link_absolute = self.base_url + team_link_relative if team_link_relative else None
