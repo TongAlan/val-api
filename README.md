@@ -51,13 +51,6 @@ This project aims to democratize access to Valorant esports data by providing a 
 | `GET` | `/` | API welcome message | None |
 | `GET` | `/health` | Health check endpoint | None |
 
-### Matches
-
-| Method | Endpoint | Description | Parameters |
-|--------|----------|-------------|------------|
-| `GET` | `/matches` | Get recent matches | None |
-| `GET` | `/matches/{match_id}` | Get specific match details | `match_id`: Match identifier |
-
 ### Players
 
 | Method | Endpoint | Description | Parameters |
@@ -97,25 +90,38 @@ curl http://localhost:8000/players/americas
 }
 ```
 
-### Get Match Details
+### Get Teams by Region
 ```bash
-curl http://localhost:8000/matches/12345
+curl http://localhost:8000/teams/americas
 ```
 
 ```json
 {
   "success": true,
-  "match": {
-    "team1": "Sentinels",
-    "team2": "100 Thieves",
-    "maps": [
-      {
-        "map": "Ascent",
-        "score": "13-11"
+  "region": "americas",
+  "count": 10,
+  "teams": [
+    {
+      "name": "Sentinels",
+      "tag": "SEN",
+      "region": "americas",
+      "total_winnings": "$500,000",
+      "url": "https://www.vlr.gg/team/2/sentinels",
+      "roster": {
+        "players": [
+          {
+            "vlr_id": 1234,
+            "ign": "TenZ",
+            "name": "Tyson Ngo",
+            "country": "Canada",
+            "is_captain": false,
+            "is_active": true
+          }
+        ],
+        "staff": []
       }
-    ],
-    "tournament": "VCT Americas"
-  }
+    }
+  ]
 }
 ```
 
