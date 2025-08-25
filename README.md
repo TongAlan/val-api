@@ -152,5 +152,3 @@ The API includes automatic request rate limiting and user-agent rotation to ensu
 Feel free to submit issues and pull requests to improve the API functionality or add new endpoints.
 
 ---
-
-Built with ❤️ for the Valorant esports community
